@@ -32,38 +32,17 @@ static const unsigned char sen5x_cmd_read_measured_values[]    = { 0x03, 0xC4 };
 /* other commands */
 static const unsigned char sen5x_cmd_clear_status_reg[]        = { 0xD2, 0x10 };
 
-/* delays in us */
-#define sen5x_MEASUREMENT_WAIT_TIME  20000
+/* Delays */
+#define sen5x_NEW_MEASUREMENT_INTERVAL_MS  1000  // 1 second
+#define sen5x_READ_CMD_WAIT_TIME_US        20000 // 20 ms
 
-#define sen5x_CMD_LENGTH       2
-#define sen5x_CRC8_LEN         1
-#define sen5x_RESPONSE_LENGTH  24
-#define sen5x_CRC8_POLYNOMIAL  0x31
-#define sen5x_CRC8_INIT        0xFF
-
-enum sen5x_chips {
-	sen5x,
-	sts3x,
-};
-
-enum sen5x_limits {
-	limit_max = 0,
-	limit_max_hyst,
-	limit_min,
-	limit_min_hyst,
-};
+#define sen5x_CMD_LENGTH                   2
+#define sen5x_MEASUREMENT_RESPONSE_LENGTH  24
+#define sen5x_CRC8_LEN                     1
+#define sen5x_CRC8_POLYNOMIAL              0x31
+#define sen5x_CRC8_INIT                    0xFF
 
 DECLARE_CRC8_TABLE(sen5x_crc8_table);
-
-
-static const u16 mode_to_update_interval[] = {
-	   0,
-	2000,
-	1000,
-	 500,
-	 250,
-	 100,
-};
 
 struct sen5x_data {
 	struct i2c_client *client;
@@ -95,8 +74,6 @@ struct sen5x_data {
 // Utility functions
 // =============================================================
 
-// Called in many functions to read data from the sensor
-// Send command, wait time and read data
 static int sen5x_read_from_command(struct i2c_client *client,
 				   struct sen5x_data *data,
 				   const char *command,
@@ -131,20 +108,17 @@ static struct sen5x_data *sen5x_update_client(struct device *dev)
 {
 	struct sen5x_data *data = dev_get_drvdata(dev);
 	struct i2c_client *client = data->client;
-	u16 interval_ms = mode_to_update_interval[data->mode];
-	unsigned long interval_jiffies = msecs_to_jiffies(interval_ms);
-	unsigned char buf[sen5x_RESPONSE_LENGTH];
+	unsigned long interval_jiffies = \
+        msecs_to_jiffies(sen5x_NEW_MEASUREMENT_INTERVAL_MS);
+	unsigned char buf[sen5x_MEASUREMENT_RESPONSE_LENGTH];
 	u16 val;
 	int ret = 0;
 
 	mutex_lock(&data->data_lock);
 	/*
-	 * Only update cached readings once per update interval in periodic
-	 * mode. In single shot mode the sensor measures values on demand, so
-	 * every time the sysfs interface is called, a measurement is triggered.
-	 * In periodic mode however, the measurement process is handled
-	 * internally by the sensor and reading out sensor values only makes
-	 * sense if a new reading is available.
+	 * The sensor has a new measurement every second, so we
+     * only read the sensor if the last update was more than 1 second ago.
+     * This is to avoid reading the sensor too often and to save power.
 	 */
 	if (time_after(jiffies, data->last_update + interval_jiffies)) {
 		ret = sen5x_read_from_command(client, data, data->command, buf,
@@ -285,7 +259,7 @@ static int sen5x_probe(struct i2c_client *client)
 	if (client->dev.platform_data)
 		data->setup = *(struct sen5x_platform_data *)dev->platform_data;
 	data->command = sen5x_cmd_read_measured_values;
-    data->wait_time = sen5x_MEASUREMENT_WAIT_TIME;
+    data->wait_time = sen5x_READ_CMD_WAIT_TIME_US;
 	mutex_init(&data->i2c_lock);
 	mutex_init(&data->data_lock);
 
