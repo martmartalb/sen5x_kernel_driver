@@ -1,0 +1,8 @@
+.venv/
+*.ko
+*.o
+*.cmd
+*.mod
+*.mod.c
+*.symvers
+*.order
