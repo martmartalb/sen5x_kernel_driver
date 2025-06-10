@@ -55,51 +55,6 @@ enum sen5x_limits {
 
 DECLARE_CRC8_TABLE(sen5x_crc8_table);
 
-/* periodic measure commands (high precision mode) */
-static const char periodic_measure_commands_hpm[][sen5x_CMD_LENGTH] = {
-	/* 0.5 measurements per second */
-	{0x20, 0x32},
-	/* 1 measurements per second */
-	{0x21, 0x30},
-	/* 2 measurements per second */
-	{0x22, 0x36},
-	/* 4 measurements per second */
-	{0x23, 0x34},
-	/* 10 measurements per second */
-	{0x27, 0x37},
-};
-
-/* periodic measure commands (low power mode) */
-static const char periodic_measure_commands_lpm[][sen5x_CMD_LENGTH] = {
-	/* 0.5 measurements per second */
-	{0x20, 0x2f},
-	/* 1 measurements per second */
-	{0x21, 0x2d},
-	/* 2 measurements per second */
-	{0x22, 0x2b},
-	/* 4 measurements per second */
-	{0x23, 0x29},
-	/* 10 measurements per second */
-	{0x27, 0x2a},
-};
-
-struct sen5x_limit_commands {
-	const char read_command[sen5x_CMD_LENGTH];
-	const char write_command[sen5x_CMD_LENGTH];
-};
-
-static const struct sen5x_limit_commands limit_commands[] = {
-	/* temp1_max, humidity1_max */
-	[limit_max] = { {0xe1, 0x1f}, {0x61, 0x1d} },
-	/* temp_1_max_hyst, humidity1_max_hyst */
-	[limit_max_hyst] = { {0xe1, 0x14}, {0x61, 0x16} },
-	/* temp1_min, humidity1_min */
-	[limit_min] = { {0xe1, 0x02}, {0x61, 0x00} },
-	/* temp_1_min_hyst, humidity1_min_hyst */
-	[limit_min_hyst] = { {0xe1, 0x09}, {0x61, 0x0B} },
-};
-
-#define sen5x_NUM_LIMIT_CMD  ARRAY_SIZE(limit_commands)
 
 static const u16 mode_to_update_interval[] = {
 	   0,
