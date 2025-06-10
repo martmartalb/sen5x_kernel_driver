@@ -27,8 +27,8 @@ struct sen5x_platform_data {
 };
 
 /* measurements commands */
-static const unsigned char sen5x_cmd_start_measurements[]      = { 0x00, 0x21 };
-static const unsigned char sen5x_cmd_stop_measurements[]       = { 0x01, 0x04 };
+static const unsigned char sen5x_cmd_start_measurement[]      = { 0x00, 0x21 };
+static const unsigned char sen5x_cmd_stop_measurement[]       = { 0x01, 0x04 };
 static const unsigned char sen5x_cmd_start_gas_only_mode[]     = { 0x00, 0x37 };
 static const unsigned char sen5x_cmd_read_measured_values[]    = { 0x03, 0xC4 };
 /* other commands */
@@ -213,57 +213,60 @@ static ssize_t mode_store(struct device *dev,
     if(ret)
         return ret;
 
-    if (mode != 0 && mode != 1 && mode != 2) {
-        dev_err(dev, "Invalid mode value: %d. Use 0 for all measurements or 1 for gas only.\n", mode);
-        return -EINVAL;
-    }
     if (data->mode == mode) {
         dev_info(dev, "Mode is already set to %d\n", mode);
         return count;
     }
 
     mutex_lock(&data->i2c_lock);
-    if (mode == 0) {
-        ret = i2c_master_send(client, sen5x_cmd_stop_measurements,
+    switch (mode) {
+        case 0: // IDLE mode, stop all measurements
+            ret = i2c_master_send(client, sen5x_cmd_stop_measurement,
             sen5x_CMD_LENGTH);
-        if (ret != sen5x_CMD_LENGTH){
-            ret = ret < 0 ? ret : -EIO;
-            goto out;
-        }
-        usleep_range(sen5x_STOP_CMD_WAIT_TIME_US, \
-            sen5x_STOP_CMD_WAIT_TIME_US + 1000);
-    }else if(mode == 1) {
-        ret = i2c_master_send(client, sen5x_cmd_stop_measurements,
+            if (ret != sen5x_CMD_LENGTH){
+                ret = ret < 0 ? ret : -EIO;
+                goto out;
+            }
+            usleep_range(sen5x_STOP_CMD_WAIT_TIME_US, \
+                sen5x_STOP_CMD_WAIT_TIME_US + 1000);
+            break;
+        case 1: // All measurements mode
+            ret = i2c_master_send(client, sen5x_cmd_stop_measurement,
+                sen5x_CMD_LENGTH);
+            if (ret != sen5x_CMD_LENGTH){
+                ret = ret < 0 ? ret : -EIO;
+                goto out;
+            }
+            usleep_range(sen5x_STOP_CMD_WAIT_TIME_US, \
+                sen5x_STOP_CMD_WAIT_TIME_US + 1000);
+            ret = i2c_master_send(client, sen5x_cmd_start_measurement,
+                sen5x_CMD_LENGTH);
+            if (ret != sen5x_CMD_LENGTH){
+                ret = ret < 0 ? ret : -EIO;
+                goto out;
+            }
+            usleep_range(sen5x_CHANGE_MODE_WAIT_TIME_US, sen5x_CHANGE_MODE_WAIT_TIME_US + 1000);
+            break;
+        case 2: // Gas only mode
+            ret = i2c_master_send(client, sen5x_cmd_stop_measurement,
             sen5x_CMD_LENGTH);
-        if (ret != sen5x_CMD_LENGTH){
-            ret = ret < 0 ? ret : -EIO;
-            goto out;
-        }
-        usleep_range(sen5x_STOP_CMD_WAIT_TIME_US, \
-            sen5x_STOP_CMD_WAIT_TIME_US + 1000);
-        ret = i2c_master_send(client, sen5x_cmd_start_measurements,
-            sen5x_CMD_LENGTH);
-        if (ret != sen5x_CMD_LENGTH){
-            ret = ret < 0 ? ret : -EIO;
-            goto out;
-        }
-        usleep_range(sen5x_CHANGE_MODE_WAIT_TIME_US, sen5x_CHANGE_MODE_WAIT_TIME_US + 1000);
-    } else {
-        ret = i2c_master_send(client, sen5x_cmd_stop_measurements,
-            sen5x_CMD_LENGTH);
-        if (ret != sen5x_CMD_LENGTH){
-            ret = ret < 0 ? ret : -EIO;
-            goto out;
-        }
-        usleep_range(sen5x_STOP_CMD_WAIT_TIME_US, \
-            sen5x_STOP_CMD_WAIT_TIME_US + 1000);
-        ret = i2c_master_send(client, sen5x_cmd_start_gas_only_mode,
-            sen5x_CMD_LENGTH);
-        if (ret != sen5x_CMD_LENGTH){
-            ret = ret < 0 ? ret : -EIO;
-            goto out;
-        }
-        usleep_range(sen5x_CHANGE_MODE_WAIT_TIME_US, sen5x_CHANGE_MODE_WAIT_TIME_US + 1000);
+            if (ret != sen5x_CMD_LENGTH){
+                ret = ret < 0 ? ret : -EIO;
+                goto out;
+            }
+            usleep_range(sen5x_STOP_CMD_WAIT_TIME_US, \
+                sen5x_STOP_CMD_WAIT_TIME_US + 1000);
+            ret = i2c_master_send(client, sen5x_cmd_start_gas_only_mode,
+                sen5x_CMD_LENGTH);
+            if (ret != sen5x_CMD_LENGTH){
+                ret = ret < 0 ? ret : -EIO;
+                goto out;
+            }
+            usleep_range(sen5x_CHANGE_MODE_WAIT_TIME_US, sen5x_CHANGE_MODE_WAIT_TIME_US + 1000);
+            break;
+        default:
+            dev_err(dev, "Invalid mode value: %d. Use 0 for IDLE, 1 for all measurements or 2 for gas only.\n", mode);
+            return -EINVAL;
     }
 
     data->mode = (u8) mode;
@@ -336,7 +339,7 @@ static int sen5x_probe(struct i2c_client *client)
     usleep_range(20000, 30000);
 
     printk(KERN_INFO "sen5x driver: Starting measurements mode...\n");
-	ret = i2c_master_send(client, sen5x_cmd_start_measurements,
+	ret = i2c_master_send(client, sen5x_cmd_start_measurement,
 			      sen5x_CMD_LENGTH);
 	if (ret != sen5x_CMD_LENGTH)
 		return ret < 0 ? ret : -ENODEV;
@@ -390,6 +393,6 @@ static struct i2c_driver sen5x_i2c_driver = {
 
 module_i2c_driver(sen5x_i2c_driver);
 
-MODULE_AUTHOR("Alberto Martin <alberto.martin@htecgroup.com>");
-MODULE_DESCRIPTION("Sensirion sen5x gas sensor driver");
+MODULE_AUTHOR("Alberto Martin <martmartalb@gmail.com>");
+MODULE_DESCRIPTION("Sensirion sen5x air quality sensor driver");
 MODULE_LICENSE("GPL");
