@@ -48,6 +48,17 @@ static const unsigned char sen5x_cmd_clear_status_reg[]        = { 0xD2, 0x10 };
 
 DECLARE_CRC8_TABLE(sen5x_crc8_table);
 
+enum {
+    pm_1_0 = 0,
+    pm_2_5,
+    pm_4_0,
+    pm_10,
+    humidity,
+    temperature,
+    voc_index,
+    nox_index,
+};
+
 struct sen5x_data {
 	struct i2c_client *client;
 	struct mutex i2c_lock; /* lock for sending i2c commands */
@@ -153,92 +164,35 @@ out:
 // =============================================================
 
 /* sysfs attributes */
-static ssize_t pm_1_0_input_show(struct device *dev,
+static ssize_t measurement_input_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
 	struct sen5x_data *data = sen5x_update_client(dev);
+    u8 index = to_sensor_dev_attr(attr)->index;
 
 	if (IS_ERR(data))
 		return PTR_ERR(data);
 
-	return sprintf(buf, "%u\n", data->pm_1_0);
-}
-
-static ssize_t pm_2_5_input_show(struct device *dev,
-				struct device_attribute *attr, char *buf)
-{
-	struct sen5x_data *data = sen5x_update_client(dev);
-
-	if (IS_ERR(data))
-		return PTR_ERR(data);
-
-	return sprintf(buf, "%u\n", data->pm_2_5);
-}
-
-static ssize_t pm_4_0_input_show(struct device *dev,
-				struct device_attribute *attr, char *buf)
-{
-	struct sen5x_data *data = sen5x_update_client(dev);
-
-	if (IS_ERR(data))
-		return PTR_ERR(data);
-
-	return sprintf(buf, "%u\n", data->pm_4_0);
-}
-
-static ssize_t pm_10_input_show(struct device *dev,
-				struct device_attribute *attr, char *buf)
-{
-	struct sen5x_data *data = sen5x_update_client(dev);
-
-	if (IS_ERR(data))
-		return PTR_ERR(data);
-
-	return sprintf(buf, "%u\n", data->pm_10);
-}
-
-static ssize_t humidity_input_show(struct device *dev,
-				struct device_attribute *attr, char *buf)
-{
-	struct sen5x_data *data = sen5x_update_client(dev);
-
-	if (IS_ERR(data))
-		return PTR_ERR(data);
-
-	return sprintf(buf, "%d\n", data->humidity);
-}
-
-static ssize_t temperature_input_show(struct device *dev,
-				struct device_attribute *attr, char *buf)
-{
-	struct sen5x_data *data = sen5x_update_client(dev);
-
-	if (IS_ERR(data))
-		return PTR_ERR(data);
-
-	return sprintf(buf, "%d\n", data->temperature);
-}
-
-static ssize_t voc_index_input_show(struct device *dev,
-				struct device_attribute *attr, char *buf)
-{
-	struct sen5x_data *data = sen5x_update_client(dev);
-
-	if (IS_ERR(data))
-		return PTR_ERR(data);
-
-	return sprintf(buf, "%d\n", data->voc_index);
-}
-
-static ssize_t nox_index_input_show(struct device *dev,
-				struct device_attribute *attr, char *buf)
-{
-	struct sen5x_data *data = sen5x_update_client(dev);
-
-	if (IS_ERR(data))
-		return PTR_ERR(data);
-
-	return sprintf(buf, "%d\n", data->nox_index);
+    switch (index) {
+        case pm_1_0:
+            return sprintf(buf, "%u\n", data->pm_1_0);
+        case pm_2_5:
+            return sprintf(buf, "%u\n", data->pm_2_5);
+        case pm_4_0:
+            return sprintf(buf, "%u\n", data->pm_4_0);
+        case pm_10:
+            return sprintf(buf, "%u\n", data->pm_10);
+        case humidity:
+            return sprintf(buf, "%d\n", data->humidity);
+        case temperature:
+            return sprintf(buf, "%d\n", data->temperature);
+        case voc_index:
+            return sprintf(buf, "%d\n", data->voc_index);
+        case nox_index:
+            return sprintf(buf, "%d\n", data->nox_index);
+        default:
+            return -EINVAL;
+    }
 }
 
 static ssize_t mode_store(struct device *dev,
@@ -334,14 +288,14 @@ static ssize_t mode_show(struct device *dev,
 }
 
 
-static SENSOR_DEVICE_ATTR_RO(pm_1_0_input, pm_1_0_input, 0);
-static SENSOR_DEVICE_ATTR_RO(pm_2_5_input, pm_2_5_input, 0);
-static SENSOR_DEVICE_ATTR_RO(pm_4_0_input, pm_4_0_input, 0);
-static SENSOR_DEVICE_ATTR_RO(pm_10_input, pm_10_input, 0);
-static SENSOR_DEVICE_ATTR_RO(humidity_input, humidity_input, 0);
-static SENSOR_DEVICE_ATTR_RO(temperature_input, temperature_input, 0);
-static SENSOR_DEVICE_ATTR_RO(voc_index_input, voc_index_input, 0);
-static SENSOR_DEVICE_ATTR_RO(nox_index_input, nox_index_input, 0);
+static SENSOR_DEVICE_ATTR_RO(pm_1_0_input, measurement_input, pm_1_0);
+static SENSOR_DEVICE_ATTR_RO(pm_2_5_input, measurement_input, pm_2_5);
+static SENSOR_DEVICE_ATTR_RO(pm_4_0_input, measurement_input, pm_4_0);
+static SENSOR_DEVICE_ATTR_RO(pm_10_input, measurement_input, pm_10);
+static SENSOR_DEVICE_ATTR_RO(humidity_input, measurement_input, humidity);
+static SENSOR_DEVICE_ATTR_RO(temperature_input, measurement_input, temperature);
+static SENSOR_DEVICE_ATTR_RO(voc_index_input, measurement_input, voc_index);
+static SENSOR_DEVICE_ATTR_RO(nox_index_input, measurement_input, nox_index);
 
 static SENSOR_DEVICE_ATTR_RW(mode, mode, 0);
 
