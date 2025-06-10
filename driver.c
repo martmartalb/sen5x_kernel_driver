@@ -28,6 +28,8 @@ struct sen5x_platform_data {
 
 /* measurements commands */
 static const unsigned char sen5x_cmd_start_measurements[]      = { 0x00, 0x21 };
+static const unsigned char sen5x_cmd_stop_measurements[]       = { 0x01, 0x04 };
+static const unsigned char sen5x_cmd_start_gas_only_mode[]     = { 0x00, 0x37 };
 static const unsigned char sen5x_cmd_read_measured_values[]    = { 0x03, 0xC4 };
 /* other commands */
 static const unsigned char sen5x_cmd_clear_status_reg[]        = { 0xD2, 0x10 };
@@ -35,6 +37,8 @@ static const unsigned char sen5x_cmd_clear_status_reg[]        = { 0xD2, 0x10 };
 /* Delays */
 #define sen5x_NEW_MEASUREMENT_INTERVAL_MS  1000  // 1 second
 #define sen5x_READ_CMD_WAIT_TIME_US        20000 // 20 ms
+#define sen5x_CHANGE_MODE_WAIT_TIME_US     50000 // 50 ms
+#define sen5x_STOP_CMD_WAIT_TIME_US        200000 // 200 ms
 
 #define sen5x_CMD_LENGTH                   2
 #define sen5x_MEASUREMENT_RESPONSE_LENGTH  24
@@ -195,16 +199,109 @@ static ssize_t pm_10_input_show(struct device *dev,
 	return sprintf(buf, "%d\n", data->pm_10);
 }
 
+static ssize_t mode_store(struct device *dev,
+				     struct device_attribute *attr,
+				     const char *buf,
+				     size_t count)
+{
+    struct sen5x_data *data = dev_get_drvdata(dev);
+    struct i2c_client *client = data->client;
+    unsigned int mode;
+    int ret;
+
+    ret = kstrtouint(buf, 0, &mode);
+    if(ret)
+        return ret;
+
+    if (mode != 0 && mode != 1 && mode != 2) {
+        dev_err(dev, "Invalid mode value: %d. Use 0 for all measurements or 1 for gas only.\n", mode);
+        return -EINVAL;
+    }
+    if (data->mode == mode) {
+        dev_info(dev, "Mode is already set to %d\n", mode);
+        return count;
+    }
+
+    mutex_lock(&data->i2c_lock);
+    if (mode == 0) {
+        ret = i2c_master_send(client, sen5x_cmd_stop_measurements,
+            sen5x_CMD_LENGTH);
+        if (ret != sen5x_CMD_LENGTH){
+            ret = ret < 0 ? ret : -EIO;
+            goto out;
+        }
+        usleep_range(sen5x_STOP_CMD_WAIT_TIME_US, \
+            sen5x_STOP_CMD_WAIT_TIME_US + 1000);
+    }else if(mode == 1) {
+        ret = i2c_master_send(client, sen5x_cmd_stop_measurements,
+            sen5x_CMD_LENGTH);
+        if (ret != sen5x_CMD_LENGTH){
+            ret = ret < 0 ? ret : -EIO;
+            goto out;
+        }
+        usleep_range(sen5x_STOP_CMD_WAIT_TIME_US, \
+            sen5x_STOP_CMD_WAIT_TIME_US + 1000);
+        ret = i2c_master_send(client, sen5x_cmd_start_measurements,
+            sen5x_CMD_LENGTH);
+        if (ret != sen5x_CMD_LENGTH){
+            ret = ret < 0 ? ret : -EIO;
+            goto out;
+        }
+        usleep_range(sen5x_CHANGE_MODE_WAIT_TIME_US, sen5x_CHANGE_MODE_WAIT_TIME_US + 1000);
+    } else {
+        ret = i2c_master_send(client, sen5x_cmd_stop_measurements,
+            sen5x_CMD_LENGTH);
+        if (ret != sen5x_CMD_LENGTH){
+            ret = ret < 0 ? ret : -EIO;
+            goto out;
+        }
+        usleep_range(sen5x_STOP_CMD_WAIT_TIME_US, \
+            sen5x_STOP_CMD_WAIT_TIME_US + 1000);
+        ret = i2c_master_send(client, sen5x_cmd_start_gas_only_mode,
+            sen5x_CMD_LENGTH);
+        if (ret != sen5x_CMD_LENGTH){
+            ret = ret < 0 ? ret : -EIO;
+            goto out;
+        }
+        usleep_range(sen5x_CHANGE_MODE_WAIT_TIME_US, sen5x_CHANGE_MODE_WAIT_TIME_US + 1000);
+    }
+
+    data->mode = (u8) mode;
+    ret = count;
+out:
+    mutex_unlock(&data->i2c_lock);
+    return ret;
+}
+
+static ssize_t mode_show(struct device *dev,
+				struct device_attribute *attr,
+				char *buf)
+{
+    struct sen5x_data *data = dev_get_drvdata(dev);
+    if (data->mode == 0) {
+        return scnprintf(buf, PAGE_SIZE, "Device in IDLE mode\n");
+    }
+    if (data->mode == 1) {
+        return scnprintf(buf, PAGE_SIZE, "Device in all measurement mode\n");
+    } else {
+        return scnprintf(buf, PAGE_SIZE, "Device in gas only mode\n");
+    }
+}
+
+
 static SENSOR_DEVICE_ATTR_RO(pm_1_0_input, pm_1_0_input, 0);
 static SENSOR_DEVICE_ATTR_RO(pm_2_5_input, pm_2_5_input, 0);
 static SENSOR_DEVICE_ATTR_RO(pm_4_0_input, pm_4_0_input, 0);
 static SENSOR_DEVICE_ATTR_RO(pm_10_input, pm_10_input, 0);
+
+static SENSOR_DEVICE_ATTR_RW(mode, mode, 0);
 
 static struct attribute *sen5x_attrs[] = {
 	&sensor_dev_attr_pm_1_0_input.dev_attr.attr,
 	&sensor_dev_attr_pm_2_5_input.dev_attr.attr,
 	&sensor_dev_attr_pm_4_0_input.dev_attr.attr,
 	&sensor_dev_attr_pm_10_input.dev_attr.attr,
+    &sensor_dev_attr_mode.dev_attr.attr,
 	NULL
 };
 
@@ -252,7 +349,7 @@ static int sen5x_probe(struct i2c_client *client)
     printk(KERN_INFO "sen5x driver: Initializing device data...\n");
 	data->setup.blocking_io = false;
 	data->setup.high_precision = true;
-	data->mode = 0;
+	data->mode = 1;
 	data->last_update = jiffies - msecs_to_jiffies(3000);
 	data->client = client;
 	crc8_populate_msb(sen5x_crc8_table, sen5x_CRC8_POLYNOMIAL);
