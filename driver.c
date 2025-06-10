@@ -61,17 +61,17 @@ struct sen5x_data {
 	struct sen5x_platform_data setup;
 
 	/*
-	 * cached values for temperature and humidity and limits
-	 * the limits arrays have the following order:
-	 * max, max_hyst, min, min_hyst
+	 * cached values for PM1.0, PM2.5, PM4.0, PM10, compensated ambient humidity
+	 * compensated ambient temperature, VOC index, NOx index
 	 */
-	int pm_1_0;
-    int pm_2_5;
-    int pm_4_0;
-    int pm_10;
-
+	unsigned int pm_1_0;
+    unsigned int pm_2_5;
+    unsigned int pm_4_0;
+    unsigned int pm_10;
+    int humidity;
     int temperature;
-	u32 humidity;
+    int voc_index;
+    int nox_index;
 };
 
 // =============================================================
@@ -115,7 +115,6 @@ static struct sen5x_data *sen5x_update_client(struct device *dev)
 	unsigned long interval_jiffies = \
         msecs_to_jiffies(sen5x_NEW_MEASUREMENT_INTERVAL_MS);
 	unsigned char buf[sen5x_MEASUREMENT_RESPONSE_LENGTH];
-	u16 val;
 	int ret = 0;
 
 	mutex_lock(&data->data_lock);
@@ -130,15 +129,14 @@ static struct sen5x_data *sen5x_update_client(struct device *dev)
 		if (ret)
 			goto out;
 
-		val = be16_to_cpup((__be16 *)buf);
-		data->pm_1_0 = val;
-		val = be16_to_cpup((__be16 *)(buf + 3));
-        data->pm_2_5 = val;
-        val = be16_to_cpup((__be16 *)(buf + 6));
-        data->pm_4_0 = val;
-        val = be16_to_cpup((__be16 *)(buf + 9));
-        data->pm_10 = val;
-        val = be16_to_cpup((__be16 *)(buf + 12));
+		data->pm_1_0 = be16_to_cpup((__be16 *)buf);
+        data->pm_2_5 = be16_to_cpup((__be16 *)(buf + 3));
+        data->pm_4_0 = be16_to_cpup((__be16 *)(buf + 6));
+        data->pm_10 = be16_to_cpup((__be16 *)(buf + 9));
+        data->humidity = be16_to_cpup((__be16 *)(buf + 12));
+        data->temperature = be16_to_cpup((__be16 *)(buf + 15));
+        data->voc_index = be16_to_cpup((__be16 *)(buf + 18));
+        data->nox_index = be16_to_cpup((__be16 *)(buf + 21));
 		data->last_update = jiffies;
 	}
 
@@ -163,7 +161,7 @@ static ssize_t pm_1_0_input_show(struct device *dev,
 	if (IS_ERR(data))
 		return PTR_ERR(data);
 
-	return sprintf(buf, "%d\n", data->pm_1_0);
+	return sprintf(buf, "%u\n", data->pm_1_0);
 }
 
 static ssize_t pm_2_5_input_show(struct device *dev,
@@ -174,7 +172,7 @@ static ssize_t pm_2_5_input_show(struct device *dev,
 	if (IS_ERR(data))
 		return PTR_ERR(data);
 
-	return sprintf(buf, "%d\n", data->pm_2_5);
+	return sprintf(buf, "%u\n", data->pm_2_5);
 }
 
 static ssize_t pm_4_0_input_show(struct device *dev,
@@ -185,7 +183,7 @@ static ssize_t pm_4_0_input_show(struct device *dev,
 	if (IS_ERR(data))
 		return PTR_ERR(data);
 
-	return sprintf(buf, "%d\n", data->pm_4_0);
+	return sprintf(buf, "%u\n", data->pm_4_0);
 }
 
 static ssize_t pm_10_input_show(struct device *dev,
@@ -196,7 +194,51 @@ static ssize_t pm_10_input_show(struct device *dev,
 	if (IS_ERR(data))
 		return PTR_ERR(data);
 
-	return sprintf(buf, "%d\n", data->pm_10);
+	return sprintf(buf, "%u\n", data->pm_10);
+}
+
+static ssize_t humidity_input_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct sen5x_data *data = sen5x_update_client(dev);
+
+	if (IS_ERR(data))
+		return PTR_ERR(data);
+
+	return sprintf(buf, "%d\n", data->humidity);
+}
+
+static ssize_t temperature_input_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct sen5x_data *data = sen5x_update_client(dev);
+
+	if (IS_ERR(data))
+		return PTR_ERR(data);
+
+	return sprintf(buf, "%d\n", data->temperature);
+}
+
+static ssize_t voc_index_input_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct sen5x_data *data = sen5x_update_client(dev);
+
+	if (IS_ERR(data))
+		return PTR_ERR(data);
+
+	return sprintf(buf, "%d\n", data->voc_index);
+}
+
+static ssize_t nox_index_input_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct sen5x_data *data = sen5x_update_client(dev);
+
+	if (IS_ERR(data))
+		return PTR_ERR(data);
+
+	return sprintf(buf, "%d\n", data->nox_index);
 }
 
 static ssize_t mode_store(struct device *dev,
@@ -296,6 +338,10 @@ static SENSOR_DEVICE_ATTR_RO(pm_1_0_input, pm_1_0_input, 0);
 static SENSOR_DEVICE_ATTR_RO(pm_2_5_input, pm_2_5_input, 0);
 static SENSOR_DEVICE_ATTR_RO(pm_4_0_input, pm_4_0_input, 0);
 static SENSOR_DEVICE_ATTR_RO(pm_10_input, pm_10_input, 0);
+static SENSOR_DEVICE_ATTR_RO(humidity_input, humidity_input, 0);
+static SENSOR_DEVICE_ATTR_RO(temperature_input, temperature_input, 0);
+static SENSOR_DEVICE_ATTR_RO(voc_index_input, voc_index_input, 0);
+static SENSOR_DEVICE_ATTR_RO(nox_index_input, nox_index_input, 0);
 
 static SENSOR_DEVICE_ATTR_RW(mode, mode, 0);
 
@@ -304,6 +350,10 @@ static struct attribute *sen5x_attrs[] = {
 	&sensor_dev_attr_pm_2_5_input.dev_attr.attr,
 	&sensor_dev_attr_pm_4_0_input.dev_attr.attr,
 	&sensor_dev_attr_pm_10_input.dev_attr.attr,
+	&sensor_dev_attr_humidity_input.dev_attr.attr,
+	&sensor_dev_attr_temperature_input.dev_attr.attr,
+	&sensor_dev_attr_voc_index_input.dev_attr.attr,
+	&sensor_dev_attr_nox_index_input.dev_attr.attr,
     &sensor_dev_attr_mode.dev_attr.attr,
 	NULL
 };
