@@ -140,12 +140,13 @@ static struct sen5x_data *sen5x_update_client(struct device *dev)
 		if (ret)
 			goto out;
 
+        // Note that temperature is in scale 200, we make it scale 100
 		data->pm_1_0 = be16_to_cpup((__be16 *)buf);
         data->pm_2_5 = be16_to_cpup((__be16 *)(buf + 3));
         data->pm_4_0 = be16_to_cpup((__be16 *)(buf + 6));
         data->pm_10 = be16_to_cpup((__be16 *)(buf + 9));
         data->humidity = be16_to_cpup((__be16 *)(buf + 12));
-        data->temperature = be16_to_cpup((__be16 *)(buf + 15));
+        data->temperature = be16_to_cpup((__be16 *)(buf + 15)) >> 1;
         data->voc_index = be16_to_cpup((__be16 *)(buf + 18));
         data->nox_index = be16_to_cpup((__be16 *)(buf + 21));
 		data->last_update = jiffies;
