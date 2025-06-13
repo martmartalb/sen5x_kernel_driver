@@ -4,6 +4,17 @@ This repository contains a simple kernel driver (`driver.c`) for the sen5x
 sensor from Sensirion, along with a supporting Makefile and a Python script
 (`quick_sensor_check.py`) to verify the presence of the sensor on your I2C bus.
 
+## TODOS
+
+* Implement read/write warm start parameters
+* Implement read/write VOC Algorithm Tuning Parameters
+* Implement read/write NOx Algorithm Tuning Parameters
+* Implement read/write RH/T Acceleration mode
+* Implement read/write VOC Algorithm State
+* Implement start fan cleaning
+* Implement read/write auto cleaning interval
+* Implement read product name, serial number and fimware version
+
 ## Files
 
 * `driver.c`: The kernel module source code.
