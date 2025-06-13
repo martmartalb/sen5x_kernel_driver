@@ -37,12 +37,14 @@ static const unsigned char sen5x_cmd_read_measured_values[]    = { 0x03, 0xC4 };
 static const unsigned char sen5x_cmd_read_temp_comp_params[]   = { 0x60, 0xB2 };
 /* other commands */
 static const unsigned char sen5x_cmd_clear_status_reg[]        = { 0xD2, 0x10 };
+static const unsigned char sen5x_cmd_reset[]               = { 0xD3, 0x04 };
 
 /* Delays */
 #define sen5x_NEW_MEASUREMENT_INTERVAL_MS  1000  // 1 second
 #define sen5x_READ_CMD_WAIT_TIME_US        20000 // 20 ms
 #define sen5x_CHANGE_MODE_WAIT_TIME_US     50000 // 50 ms
 #define sen5x_STOP_CMD_WAIT_TIME_US        200000 // 200 ms
+#define sen5x_RESET_CMD_WAIT_TIME_US       100000 // 200 ms
 
 #define sen5x_CMD_LENGTH                        2
 #define sen5x_MEASUREMENT_RESPONSE_LENGTH       24
@@ -575,6 +577,7 @@ static int sen5x_probe(struct i2c_client *client)
 	data = devm_kzalloc(dev, sizeof(*data), GFP_KERNEL);
 	if (!data)
 		return -ENOMEM;
+    i2c_set_clientdata(client, data);
 
     printk(KERN_INFO "sen5x driver: Initializing device data...\n");
 	data->mode = 1;
@@ -595,7 +598,7 @@ static int sen5x_probe(struct i2c_client *client)
     if (ret)
 		return ret;
 
-    printk(KERN_INFO "Registering hwmon device\n");
+    printk(KERN_INFO "sen5x driver: Registering hwmon device\n");
 	hwmon_dev = devm_hwmon_device_register_with_groups(dev,
 							   client->name,
 							   data,
@@ -605,6 +608,29 @@ static int sen5x_probe(struct i2c_client *client)
 		dev_dbg(dev, "unable to register hwmon device\n");
 
 	return PTR_ERR_OR_ZERO(hwmon_dev);
+}
+
+static int sen5x_remove(struct i2c_client *client)
+{
+    struct sen5x_data *data = i2c_get_clientdata(client);
+    int ret;
+
+    if (!data)
+        return -ENODEV;
+
+    printk(KERN_INFO "sen5x driver: Resetting sensor\n");
+    // Reset the sensor
+    ret = i2c_master_send(data->client, sen5x_cmd_reset, sen5x_CMD_LENGTH);
+    if (ret != sen5x_CMD_LENGTH){
+        ret = ret < 0 ? ret : -EIO;
+    }
+    usleep_range(sen5x_RESET_CMD_WAIT_TIME_US, \
+        sen5x_RESET_CMD_WAIT_TIME_US + 1000);
+
+    mutex_destroy(&data->i2c_lock);
+    mutex_destroy(&data->data_lock);
+
+    return 0;
 }
 
 /* device ID table */
@@ -618,6 +644,7 @@ MODULE_DEVICE_TABLE(i2c, sen5x_ids);
 static struct i2c_driver sen5x_i2c_driver = {
 	.driver.name = "sen5x",
 	.probe_new   = sen5x_probe,
+    .remove      = sen5x_remove,
 	.id_table    = sen5x_ids,
 };
 
